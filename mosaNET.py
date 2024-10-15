@@ -2,6 +2,7 @@ import os
 import argparse
 import torch
 import torchaudio
+from sklearn.model_selection import train_test_split
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -10,9 +11,7 @@ from torch.utils.data import DataLoader
 import librosa
 import speechbrain
 from tqdm import tqdm
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+import pandas as pd
 
 
    
@@ -109,6 +108,16 @@ class MosPredictor(nn.Module):
         return quality_utt.squeeze(1), int_utt.squeeze(1), frame_quality.squeeze(2), frame_int.squeeze(2)
 
 
+#Adapt for the mosa net 
+''' 
+        self.att_output_layer_intell = nn.MultiheadAttention(128, num_heads=8)           
+        self.output_layer_intell = nn.Linear(128, 1)
+'''
+def freeze( model):
+    for param in model.parameters():
+        param.requires_grad = False
+
+
 '''
 classe dataset onde entra como os argumentos da lista:
 
@@ -148,8 +157,6 @@ class MyDataset(Dataset):
 
 #Collate function TODO
 
-#function to freeze the layers TODO
-
     
 def denorm(input_x):
     input_x = input_x*(5-0) + 0
@@ -168,8 +175,17 @@ def main():
     args = parser.parse_args()
 
     #define dataset 
-    #define dataloaders
+    train_df = MyDataset('Trainer.csv' , 'TrainerWhisper.csv')
+    train_loader = DataLoader(train_df, batch_size=1) #collate todo , num_workers todo
+
+    test_df = MyDataset('Test.csv' , 'TestWhisper.csv')
+    test_loader = DataLoader(test_df, batch=1) #collate todo , num_workers todo
+
     #define optimizer loss and other stuffs  
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    loss = nn.MSELoss()
+    
+    
     #put the train and the test loop here
         
     print("\n\n\n ######## Iniciando o fine tune #########   \n\n\n")
