@@ -12,6 +12,7 @@ import librosa
 import speechbrain
 from tqdm import tqdm
 import pandas as pd
+#figas
 
 
    
