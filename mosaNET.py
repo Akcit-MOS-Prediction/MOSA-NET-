@@ -114,12 +114,17 @@ class MosPredictor(nn.Module):
         self.att_output_layer_intell = nn.MultiheadAttention(128, num_heads=8)           
         self.output_layer_intell = nn.Linear(128, 1)
 '''
-def freeze( model):
-    for param in model.parameters():
-        param.requires_grad = False
-
-
+def freeze_layers(model, layers_to_freeze):
+    for name, layer in model.named_children():
+        if name in layers_to_freeze:
+            for param in layer.parameters():
+                param.requires_grad = False
 '''
+
+layers_to_freeze = ['att_output_layer_intell', 'output_layer_intell', 'intellaverage_score']
+freeze_layers(model, layers_to_freeze)
+
+
 classe dataset onde entra como os argumentos da lista:
 
 mos_list com arquivos de áudio[0] e mos [1] .csv
@@ -153,6 +158,27 @@ class MyDataset(Dataset):
         
         return wav , lps , whisper_features, mos_tensor
 
+
+def train(model , train_loader , optimizer , loss , device , epochs):
+    model.train()
+    model.to(device)
+    for epoch in range(epochs):
+        for i, (wav, lps, whisper, mos) in enumerate(train_loader):
+            wav = wav.to(device)
+            lps = lps.to(device)
+            whisper = whisper.to(device)
+            mos = mos.to(device)
+            
+            optimizer.zero_grad()
+            quality_utt, int_utt, frame_quality, frame_int = model(wav, lps, whisper)
+            loss = loss(quality_utt, int_utt, frame_quality, frame_int, mos)
+            loss.backward()
+            optimizer.step()
+            print(f'Epoch: {epoch}, Loss: {loss.item()}')
+
+            
+            #Check a função de treino e implementar a função de teste
+
         
 
 
@@ -181,6 +207,8 @@ def main():
 
     test_df = MyDataset('Test.csv' , 'TestWhisper.csv')
     test_loader = DataLoader(test_df, batch=1) #collate todo , num_workers todo
+
+    model = MosPredictor()
 
     #define optimizer loss and other stuffs  
     optimizer = optim.Adam(model.parameters(), lr=0.001)
