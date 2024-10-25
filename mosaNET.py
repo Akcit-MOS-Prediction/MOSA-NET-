@@ -159,29 +159,66 @@ class MyDataset(Dataset):
         return wav , lps , whisper_features, mos_tensor
 
 
-def train(model , train_loader , optimizer , loss , device , epochs):
-    model.train()
-    model.to(device)
+def train(model, train_loader, optimizer, criterion, device, epochs, ckpt_path):
+    # Definir o diretório de checkpoints
+    if ckpt_path and os.path.exists(ckpt_path):
+        print(f"Carregando checkpoint de {ckpt_path}")
+        model.load_state_dict(torch.load(ckpt_path))
+    else:
+        print("Iniciando treinamento sem checkpoint.")
+    
+    model = model.to(device)
+    model.train()  # Configura o modelo para o modo de treinamento
+
+    patience = 5
+    best_val_loss = float("inf")
+    
     for epoch in range(epochs):
-        for i, (wav, lps, whisper, mos) in enumerate(train_loader):
-            wav = wav.to(device)
-            lps = lps.to(device)
-            whisper = whisper.to(device)
-            mos = mos.to(device)
-            
+        print(f"=== Epoch {epoch+1}/{epochs} ===")
+        running_loss = 0.0
+        steps = 0
+
+        for data in tqdm(train_loader):
+            inputs, lps, whisper, labels_quality, labels_intell = data
+            inputs, lps = inputs.to(device), lps.to(device)
+            labels_quality, labels_intell = labels_quality.to(device), labels_intell.to(device)
+
             optimizer.zero_grad()
-            quality_utt, int_utt, frame_quality, frame_int = model(wav, lps, whisper)
-            loss = loss(quality_utt, int_utt, frame_quality, frame_int, mos)
+            output_quality, output_intell, frame_quality, frame_intell = model(inputs, lps, whisper)
+
+            # Calcular as perdas
+            label_frame_quality = frame_score(labels_quality, frame_quality)
+            label_frame_intell = frame_score(labels_intell, frame_intell)
+            loss_frame_quality = criterion(frame_quality, label_frame_quality)
+            loss_frame_intell = criterion(frame_intell, label_frame_intell)
+            loss_quality = criterion(output_quality.squeeze(1), labels_quality)
+            loss_intell = criterion(output_intell.squeeze(1), labels_intell)
+
+            # Somar todas as perdas para o gradiente
+            loss = loss_quality + loss_frame_quality + loss_intell + loss_frame_intell
+
+            # Backpropagation
             loss.backward()
             optimizer.step()
-            print(f'Epoch: {epoch}, Loss: {loss.item()}')
+            steps += 1
+            running_loss += loss.item()
 
-            
-            #Check a função de treino e implementar a função de teste
+        avg_train_loss = running_loss / steps
+        print(f"Epoch {epoch+1} - Loss: {avg_train_loss:.4f}")
 
-        
+        # Salvar o modelo se a validação melhorar (a ser adicionada)
+        if avg_train_loss < best_val_loss:
+            print(f"Novo melhor modelo com perda {avg_train_loss:.4f}, salvando...")
+            torch.save(model.state_dict(), ckpt_path)
+            best_val_loss = avg_train_loss
+            patience = 5  # Resetar paciência
+        else:
+            patience -= 1
 
-
+        # Parar o treinamento se a paciência esgotar
+        if patience == 0:
+            print("Treinamento interrompido por paciência esgotada.")
+            break
 #Collate function TODO
 
     
