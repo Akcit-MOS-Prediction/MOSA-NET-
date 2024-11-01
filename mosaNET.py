@@ -292,6 +292,7 @@ def main():
     epochs = 10
     
     #put the train and the test loop here
+    #Bring the .pth files in here 
         
     print("\n\n\n ######## Iniciando o fine tune #########   \n\n\n")
     
@@ -301,8 +302,12 @@ def main():
     Iniciar o treinamento, função de teste e por último salvar o modelo 
     '''
     train(model, train_loader, optimizer, loss, device, epochs, args.outdir + '/model.pth')
+
+    print("\n\n\n ######## Fine tune finalizado #########   \n\n\n")
+
+    teste(args.outdir + '/model.pth', model, test_loader, device)
     
-    #torch.save(model.state_dict(), args.outdir + '/model.pth')
+    torch.save(model.state_dict(), args.outdir + '/model.pth')
     
     
 if __name__ == '__main__':
