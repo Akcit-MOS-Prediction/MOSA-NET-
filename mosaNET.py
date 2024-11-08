@@ -15,12 +15,11 @@ import pandas as pd
 #figas
 
 
-   
 class MosPredictor(nn.Module):
-    
+
     def __init__(self):
         super().__init__()
-        
+
         self.mean_net_conv = nn.Sequential(
             nn.Conv2d(in_channels = 1, out_channels = 16, kernel_size = (3,3), padding = (1,1)),
             nn.Conv2d(in_channels = 16, out_channels = 16, kernel_size = (3,3), padding = (1,1)),
@@ -46,10 +45,10 @@ class MosPredictor(nn.Module):
             nn.Dropout(0.3),
             nn.BatchNorm2d(128),
             nn.ReLU())
-        
+
         self.relu_ = nn.ReLU()
         self.sigmoid_ = nn.Sigmoid()
-        
+
         self.ssl_features = 1280
         self.dim_layer = nn.Linear(self.ssl_features, 512)
 
@@ -58,60 +57,59 @@ class MosPredictor(nn.Module):
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
-        )        
+        )
 
         self.sinc = speechbrain.nnet.CNN.SincConv(in_channels=1, out_channels=257, kernel_size=251, stride=256, sample_rate=16000)
-        self.att_output_layer_quality = nn.MultiheadAttention(128, num_heads=8)                
+        self.att_output_layer_quality = nn.MultiheadAttention(128, num_heads=8)
         self.output_layer_quality = nn.Linear(128, 1)
-        self.qualaverage_score = nn.AdaptiveAvgPool1d(1)  
-     
-        self.att_output_layer_intell = nn.MultiheadAttention(128, num_heads=8)           
+        self.qualaverage_score = nn.AdaptiveAvgPool1d(1)
+
+        self.att_output_layer_intell = nn.MultiheadAttention(128, num_heads=8)
         self.output_layer_intell = nn.Linear(128, 1)
-        self.intellaverage_score = nn.AdaptiveAvgPool1d(1)  
-                       
-        self.att_output_layer_stoi= nn.MultiheadAttention(128, num_heads=8)          
-        self.output_layer_stoi = nn.Linear(128, 1)        
-        self.stoiaverage_score = nn.AdaptiveAvgPool1d(1) 
+        self.intellaverage_score = nn.AdaptiveAvgPool1d(1)
+
+        self.att_output_layer_stoi= nn.MultiheadAttention(128, num_heads=8)
+        self.output_layer_stoi = nn.Linear(128, 1)
+        self.stoiaverage_score = nn.AdaptiveAvgPool1d(1)
 
     def new_method(self):
-        self.sin_conv 
-                
+        self.sin_conv
+
     def forward(self, wav, lps, whisper):
         #SSL Features
         wav_ = wav.squeeze(1)  ## [batches, audio_len]
         ssl_feat_red = self.dim_layer(whisper.squeeze(1))
         ssl_feat_red = self.relu_(ssl_feat_red)
- 
+
         #PS Features
         sinc_feat=self.sinc(wav.squeeze(1))
         unsq_sinc =  torch.unsqueeze(sinc_feat, axis=1)
         concat_lps_sinc = torch.cat((lps,unsq_sinc), axis=2)
         cnn_out = self.mean_net_conv(concat_lps_sinc)
         batch = concat_lps_sinc.shape[0]
-        time = concat_lps_sinc.shape[2]        
+        time = concat_lps_sinc.shape[2]
         re_cnn = cnn_out.view((batch, time, 512))
-        
+
         concat_feat = torch.cat((re_cnn,ssl_feat_red), axis=1)
         out_lstm, (h, c) = self.mean_net_rnn(concat_feat)
-        out_dense = self.mean_net_dnn(out_lstm) # (batch, seq, 1)       
-        
-        quality_att, _ = self.att_output_layer_quality (out_dense, out_dense, out_dense) 
+        out_dense = self.mean_net_dnn(out_lstm) # (batch, seq, 1)
+
+        quality_att, _ = self.att_output_layer_quality (out_dense, out_dense, out_dense)
         frame_quality = self.output_layer_quality(quality_att)
-        frame_quality = self.sigmoid_(frame_quality)   
+        frame_quality = self.sigmoid_(frame_quality)
         quality_utt = self.qualaverage_score(frame_quality.permute(0,2,1))
 
-        int_att, _ = self.att_output_layer_intell (out_dense, out_dense, out_dense) 
+        int_att, _ = self.att_output_layer_intell (out_dense, out_dense, out_dense)
         frame_int = self.output_layer_intell(int_att)
-        frame_int = self.sigmoid_(frame_int)   
+        frame_int = self.sigmoid_(frame_int)
         int_utt = self.intellaverage_score(frame_int.permute(0,2,1))
 
-                
         return quality_utt.squeeze(1), int_utt.squeeze(1), frame_quality.squeeze(2), frame_int.squeeze(2)
 
 
-#Adapt for the mosa net 
-''' 
-        self.att_output_layer_intell = nn.MultiheadAttention(128, num_heads=8)           
+#Adapt for the mosa net
+'''
+        self.att_output_layer_intell = nn.MultiheadAttention(128, num_heads=8)
         self.output_layer_intell = nn.Linear(128, 1)
 '''
 def freeze_layers(model, layers_to_freeze):
@@ -134,14 +132,13 @@ class MyDataset(Dataset):
     def __init__(self, mos_list, features_data) :
         self.mos_data = pd.read_csv(mos_list , header=None) #coluna 0 caminho do audio, coluna 1 score
         self.features_data = pd.read_csv(features_data, header=None) #coluna 0 caminho das features
-       
-    def __len__(self):
-        return len(self.mos_data) 
 
-        
-    def __getitem__(self, idx):             
-        
-        wavfile = self.mos_data.iloc[idx, 0] #caminho do audio                    
+    def __len__(self):
+        return len(self.mos_data)
+
+    def __getitem__(self, idx):
+
+        wavfile = self.mos_data.iloc[idx, 0] #caminho do audio
         mos_score = float(self.mos_data.iloc[idx, 1]) #score do audio
 
         wav,_ = torchaudio.load(wavfile) #carrega o audio
@@ -150,13 +147,57 @@ class MyDataset(Dataset):
         stft = torch.stft(wav[0], n_fft=512, hop_length=256, win_length=512, return_complex=False)
         magnitude = torch.abs(stft)
         lps = magnitude.transpose(0, 1).unsqueeze(0)
-        
+
         feature_path = self.features_data.iloc[idx, 0] #caminho das features
         whisper_features = torch.load(feature_path) #carrega as features
 
         mos_tensor = torch.tensor(mos_score)
-        
+
+        print(wav.shape, lps.shape, whisper_features.shape, mos_tensor)
+
         return wav , lps , whisper_features, mos_tensor
+
+
+class CollateFunc():
+    def __init__(self):
+        pass
+
+    def __call__(self, batch):
+        # "squeeze" é usado para tirar a dimensão extra de batch (facilita o processo de construção do batch)
+        wav_list = [item[0].squeeze(0) for item in batch]
+        lps_list = [item[1].squeeze(0) for item in batch]
+        whisper_list = [item[2].squeeze(0) for item in batch]
+        labels = [item[3] for item in batch]
+
+        batch_size = len(wav_list)
+        lps_feature_dim = lps_list[0].size(1)
+        whisper_feature_dim = whisper_list[0].size(1)
+
+        # Pega o tamanho máximo na dimensão do tempo
+        wav_max_len = max([wav.size(0) for wav in wav_list])
+        lps_max_len = max([lps.size(0) for lps in lps_list])
+        whisper_max_len = max([whisper.size(0) for whisper in whisper_list])
+
+        # Cria tensores preenchidos com zeros com os tamanhos máximos
+        wavs_padded = torch.zeros(batch_size, wav_max_len)
+        lps_padded = torch.zeros(batch_size, lps_max_len, lps_feature_dim, 2)
+        whisper_padded = torch.zeros(batch_size, whisper_max_len, whisper_feature_dim)
+
+        # Preenche os tensores com os dados
+        for idx in range(batch_size):
+            wav = wav_list[idx]
+            lps = lps_list[idx]
+            whisper = whisper_list[idx]
+
+            wavs_padded[idx, :wav.size(0)] = wav
+            lps_padded[idx, :lps.size(0), :, :] = lps
+            whisper_padded[idx, :whisper.size(0), :] = whisper
+
+        # wavs shape: (batch_size, audio_len)
+        # lps shape: (batch_size, lps_len, lps_feature_dim, 2)
+        # whisper shape: (batch_size, whisper_len, whisper_feature_dim)
+        # labels shape: (batch_size)
+        return wavs_padded, lps_padded, whisper_padded, labels
 
 
 def train(model, train_loader, optimizer, criterion, device, epochs, ckpt_path):
@@ -166,13 +207,13 @@ def train(model, train_loader, optimizer, criterion, device, epochs, ckpt_path):
         model.load_state_dict(torch.load(ckpt_path))
     else:
         print("Iniciando treinamento sem checkpoint.")
-    
+
     model = model.to(device)
     model.train()  # Configura o modelo para o modo de treinamento
 
     patience = 5
     best_val_loss = float("inf")
-    
+
     for epoch in range(epochs):
         print(f"=== Epoch {epoch+1}/{epochs} ===")
         running_loss = 0.0
@@ -221,14 +262,14 @@ def train(model, train_loader, optimizer, criterion, device, epochs, ckpt_path):
             break
 #Collate function TODO
 
-    
+
 def denorm(input_x):
     input_x = input_x*(5-0) + 0
     return input_x
-    
+
 def frame_score(y_true, y_predict):
-    B,T = y_predict.size()  
-    y_true_repeat = y_true.unsqueeze(1).repeat(1,T) #(B,T)  
+    B,T = y_predict.size()
+    y_true_repeat = y_true.unsqueeze(1).repeat(1,T) #(B,T)
     return y_true_repeat
 
 
@@ -236,7 +277,7 @@ def frame_score(y_true, y_predict):
 def teste(ckpt_path , model, test_loader, device):
     checkpoint = torch.load(ckpt_path , map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
-    
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = MosPredictor().to(device)
     model.eval()
@@ -276,41 +317,53 @@ def main():
     parser.add_argument('--outdir', type=str, required=False, default='/MOSA-Net_Plus_Torch/Checkpoint', help='Output directory for your trained checkpoints')
     args = parser.parse_args()
 
-    #define dataset 
+    collate_fn = CollateFunc()
+
+    #define dataset
     train_df = MyDataset('Trainer.csv' , 'TrainerWhisper.csv')
-    train_loader = DataLoader(train_df, batch_size=1) #collate todo , num_workers todo
+    train_loader = DataLoader(
+        train_df,
+        batch_size=1,
+        # collate_fn=collate_fn,
+        # shuffle=True,
+        # num_workers=4
+    )
 
     test_df = MyDataset('Test.csv' , 'TestWhisper.csv')
-    test_loader = DataLoader(test_df, batch=1) #collate todo , num_workers todo
+    test_loader = DataLoader(
+        test_df,
+        batch_size=1,
+        # collate_fn=collate_fn,
+        # shuffle=False,
+        # num_workers=4
+    )
 
     model = MosPredictor()
 
-    #define optimizer loss and other stuffs  
+    #define optimizer loss and other stuffs
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     loss = nn.MSELoss()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     epochs = 10
-    
-    #put the train and the test loop here
-    #Bring the .pth files in here 
-        
-    print("\n\n\n ######## Iniciando o fine tune #########   \n\n\n")
-    
-    '''
-    Comentários para orientar 
 
-    Iniciar o treinamento, função de teste e por último salvar o modelo 
+    #put the train and the test loop here
+    #Bring the .pth files in here
+
+    print("\n\n\n ######## Iniciando o fine tune #########   \n\n\n")
+
+    '''
+    Comentários para orientar
+
+    Iniciar o treinamento, função de teste e por último salvar o modelo
     '''
     train(model, train_loader, optimizer, loss, device, epochs, args.outdir + '/model.pth')
 
     print("\n\n\n ######## Fine tune finalizado #########   \n\n\n")
 
     teste(args.outdir + '/model.pth', model, test_loader, device)
-    
+
     torch.save(model.state_dict(), args.outdir + '/model.pth')
-    
-    
+
+
 if __name__ == '__main__':
     main()
-
-    
