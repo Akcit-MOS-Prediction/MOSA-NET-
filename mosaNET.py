@@ -232,6 +232,44 @@ def frame_score(y_true, y_predict):
     return y_true_repeat
 
 
+#def teste( Função de teste baseada no código original)
+def teste(ckpt_path , model, test_loader, device):
+    checkpoint = torch.load(ckpt_path , map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = MosPredictor().to(device)
+    model.eval()
+
+    total = 0
+    correct = 0
+    test_loss = 0.0
+    criterion = torch.nn.CrossEntropyLoss() #Mudar para MSE
+
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+
+            # Forward pass
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            test_loss += loss.item()
+
+            # Calculate accuracy
+            _, predicted = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    # Calculate final loss and accuracy
+    avg_loss = test_loss / len(test_loader)
+    accuracy = 100 * correct / total
+
+    print(f"Test Loss: {avg_loss:.4f}")
+    print(f"Test Accuracy: {accuracy:.2f}%")
+
+    return avg_loss, accuracy
+
+
 def main():
     parser = argparse.ArgumentParser('')
     parser.add_argument('--finetune_from_checkpoint', type=str, required=False, help='Path to your checkpoint to finetune from')
@@ -251,17 +289,26 @@ def main():
     #define optimizer loss and other stuffs  
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     loss = nn.MSELoss()
-    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    epochs = 10
     
     #put the train and the test loop here
+    #Bring the .pth files in here 
         
     print("\n\n\n ######## Iniciando o fine tune #########   \n\n\n")
     
-    #training loop
-    #Testing 
+    '''
+    Comentários para orientar 
 
+    Iniciar o treinamento, função de teste e por último salvar o modelo 
+    '''
+    train(model, train_loader, optimizer, loss, device, epochs, args.outdir + '/model.pth')
+
+    print("\n\n\n ######## Fine tune finalizado #########   \n\n\n")
+
+    teste(args.outdir + '/model.pth', model, test_loader, device)
     
-    #torch.save(model.state_dict(), args.outdir + '/model.pth')
+    torch.save(model.state_dict(), args.outdir + '/model.pth')
     
     
 if __name__ == '__main__':
