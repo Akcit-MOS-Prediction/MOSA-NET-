@@ -188,14 +188,14 @@ def train(model, train_loader, optimizer, criterion, device, epochs, ckpt_path):
 
             # Calcular as perdas
             label_frame_quality = frame_score(labels_quality, frame_quality)
-            label_frame_intell = frame_score(labels_intell, frame_intell)
+            #label_frame_intell = frame_score(labels_intell, frame_intell)
             loss_frame_quality = criterion(frame_quality, label_frame_quality)
-            loss_frame_intell = criterion(frame_intell, label_frame_intell)
+            #loss_frame_intell = criterion(frame_intell, label_frame_intell)
             loss_quality = criterion(output_quality.squeeze(1), labels_quality)
-            loss_intell = criterion(output_intell.squeeze(1), labels_intell)
+            #loss_intell = criterion(output_intell.squeeze(1), labels_intell)
 
             # Somar todas as perdas para o gradiente
-            loss = loss_quality + loss_frame_quality + loss_intell + loss_frame_intell
+            loss = loss_quality + loss_frame_quality
 
             # Backpropagation
             loss.backward()
@@ -246,6 +246,7 @@ def main():
     test_loader = DataLoader(test_df, batch=1) #collate todo , num_workers todo
 
     model = MosPredictor()
+    
 
     #define optimizer loss and other stuffs  
     optimizer = optim.Adam(model.parameters(), lr=0.001)
